@@ -1,0 +1,13 @@
+[package]
+name = "tt-py"
+version = "0.1.0"
+edition = "2024"
+description = "Python bindings for tt-core table tennis physics engine"
+
+[lib]
+name = "tt_physics"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module"] }
+tt-core = { path = "../tt-core" }
