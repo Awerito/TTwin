@@ -116,8 +116,12 @@ impl CollisionDetector {
         // Current distance above collision plane
         let current_dist = ball.pos.y - collision_y;
 
-        // If already below collision plane, something went wrong
+        // If already below collision plane, check if over table first
         if current_dist < -constants::EPSILON {
+            // Only collide if actually over the table
+            if !table.is_over_table(ball.pos.x, ball.pos.z) {
+                return None;
+            }
             // Already penetrating - return immediate collision
             return Some(CollisionInfo {
                 target: CollisionTarget::Table,
