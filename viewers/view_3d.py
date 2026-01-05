@@ -147,109 +147,240 @@ class GameState:
 
 
 # =============================================================================
-# Scripted Rally - Forehand topspin diagonal
+# Paddle Physics - Real collision detection and response
 # =============================================================================
 
 
-class ScriptedRally:
-    """Simple scripted rally: forehand topspin diagonal back and forth."""
+class PaddlePhysics:
+    """
+    Real paddle collision physics.
 
-    def __init__(self, sim: Simulation, paddle_left: Entity, paddle_right: Entity):
+    Detects ball-paddle collision and applies realistic bounce based on:
+    - Paddle position and angle
+    - Paddle swing velocity
+    - Ball incoming velocity and spin
+    """
+
+    # Paddle dimensions (meters)
+    PADDLE_WIDTH = 0.15  # 15cm wide
+    PADDLE_HEIGHT = 0.17  # 17cm tall
+    PADDLE_THICKNESS = 0.01  # 1cm thick
+
+    # Physics coefficients
+    RESTITUTION = 0.85  # Bounce coefficient
+    FRICTION = 0.6  # Surface friction for spin
+
+    def __init__(self, paddle: Entity, side: str, sim: Simulation):
+        self.paddle = paddle
+        self.side = side  # "left" or "right"
         self.sim = sim
-        self.paddle_left = paddle_left
-        self.paddle_right = paddle_right
 
         half_length, half_width, height, net_height = sim.table_dimensions()
         self.half_length = half_length
         self.half_width = half_width
         self.surface_y = sim.table_surface_y()
 
-        # Hit zones (x position where we detect and apply hit)
-        self.hit_x_left = -half_length - 0.2
-        self.hit_x_right = half_length + 0.2
+        # Paddle swing state
+        self.is_swinging = False
+        self.swing_velocity = Vec3(0, 0, 0)  # Paddle velocity during swing
+        self.target_z = 0.0
+        self.target_y = self.surface_y + 0.15
 
-        # Rally parameters
-        self.hit_speed = 8.0  # m/s
-        self.hit_angle_v = 12.0  # degrees up
-        self.topspin_rpm = 3000.0
+        # Movement parameters
+        self.move_speed = 4.0  # m/s lateral movement
+        self.swing_speed = 8.0  # m/s forward swing
 
-        # Diagonal positions (forehand corners)
-        self.z_left = -half_width * 0.6  # Left player forehand side
-        self.z_right = half_width * 0.6  # Right player forehand side
-
-        # Track state
-        self.last_hit_side = None
-        self.hit_count = 0
-
-    def start_rally(self):
-        """Start a rally from the left side."""
-        self.sim.reset()
-        self.hit_count = 0
-        self.last_hit_side = None
-
-        # Position paddles at diagonal corners
-        self.paddle_left.z = self.z_left
-        self.paddle_right.z = self.z_right
-
-        # Ball starts at left paddle, launch towards right diagonal
-        # Use explicit values: table surface ~0.76m, start 0.2m above
-        start_x = -self.half_length - 0.1  # Just past left edge
-        start_y = 0.96  # ~0.76 + 0.2 above table
-        start_z = self.z_left
-
-        self.sim.set_ball_position(start_x, start_y, start_z)
-        self._hit_towards("right")
-        self.last_hit_side = "left"
-        self.hit_count = 1
-
-    def _hit_towards(self, target_side: str):
-        """Apply a forehand topspin hit towards target side."""
-        # Target position
-        target_z = self.z_right if target_side == "right" else self.z_left
-        target_x = self.hit_x_right if target_side == "right" else self.hit_x_left
-
-        pos = self.sim.ball_position()
-
-        # Calculate direction
-        dx = target_x - pos.x
-        dz = target_z - pos.z
-        dist_xz = math.sqrt(dx * dx + dz * dz)
-
-        # Velocity components
-        angle_v_rad = math.radians(self.hit_angle_v)
-        v_horizontal = self.hit_speed * math.cos(angle_v_rad)
-        vy = self.hit_speed * math.sin(angle_v_rad)
-
-        # Direction in XZ plane
-        vx = v_horizontal * (dx / dist_xz)
-        vz = v_horizontal * (dz / dist_xz)
-
-        self.sim.set_ball_velocity(vx, vy, vz)
-
-        # Topspin (positive Z spin for ball moving in +X)
-        spin_direction = 1 if dx > 0 else -1
-        self.sim.set_ball_spin_rpm(0, 0, self.topspin_rpm * spin_direction)
-
-    def update(self):
-        """Check for hits and apply them."""
+    def predict_intercept_z(self) -> float:
+        """Predict where ball will arrive at paddle's x plane."""
         pos = self.sim.ball_position()
         vel = self.sim.ball_velocity()
 
-        # Check if ball reached right side (moving right)
-        if vel.x > 0 and pos.x > self.hit_x_right and self.last_hit_side != "right":
-            # Right paddle hits back to left
-            self.paddle_right.z = pos.z  # Move paddle to ball
-            self._hit_towards("left")
-            self.last_hit_side = "right"
-            self.hit_count += 1
+        # Our x position
+        paddle_x = self.paddle.x
 
-        # Check if ball reached left side (moving left)
-        elif vel.x < 0 and pos.x < self.hit_x_left and self.last_hit_side != "left":
-            # Left paddle hits back to right
-            self.paddle_left.z = pos.z  # Move paddle to ball
-            self._hit_towards("right")
-            self.last_hit_side = "left"
-            self.hit_count += 1
+        # Check if ball is coming towards us
+        if self.side == "left" and vel.x >= 0:
+            return self.paddle.z
+        if self.side == "right" and vel.x <= 0:
+            return self.paddle.z
+
+        # Time to reach our x
+        dx = paddle_x - pos.x
+        if abs(vel.x) < 0.1:
+            return pos.z
+
+        t = dx / vel.x
+        if t < 0 or t > 2.0:  # More than 2 seconds away, don't bother
+            return self.paddle.z
+
+        # Predicted z position (simple linear, ignoring gravity effect on z)
+        predicted_z = pos.z + vel.z * t
+
+        # Clamp to reachable range
+        return max(-self.half_width, min(self.half_width, predicted_z))
+
+    def update(self, dt: float):
+        """Update paddle position and check for collision."""
+        pos = self.sim.ball_position()
+        vel = self.sim.ball_velocity()
+
+        # Predict where to move
+        self.target_z = self.predict_intercept_z()
+
+        # Move paddle towards target (smooth movement)
+        current_z = self.paddle.z
+        diff_z = self.target_z - current_z
+        max_move = self.move_speed * dt
+        if abs(diff_z) > max_move:
+            move_z = max_move if diff_z > 0 else -max_move
+        else:
+            move_z = diff_z
+        self.paddle.z = current_z + move_z
+
+        # Check for collision
+        if self._check_collision():
+            self._apply_paddle_hit()
+            return True
+
+        return False
+
+    def _check_collision(self) -> bool:
+        """Check if ball is colliding with paddle."""
+        ball_pos = self.sim.ball_position()
+        ball_vel = self.sim.ball_velocity()
+        paddle_pos = self.paddle.position
+
+        # Ball must be moving towards paddle
+        if self.side == "left" and ball_vel.x >= 0:
+            return False
+        if self.side == "right" and ball_vel.x <= 0:
+            return False
+
+        # Check x distance (paddle faces ball)
+        dx = abs(ball_pos.x - paddle_pos.x)
+        if dx > 0.08:  # Ball not close enough in x
+            return False
+
+        # Check y bounds (paddle height)
+        dy = abs(ball_pos.y - paddle_pos.y)
+        if dy > self.PADDLE_HEIGHT / 2 + 0.02:  # Ball radius
+            return False
+
+        # Check z bounds (paddle width)
+        dz = abs(ball_pos.z - paddle_pos.z)
+        if dz > self.PADDLE_WIDTH / 2 + 0.02:
+            return False
+
+        return True
+
+    def _apply_paddle_hit(self):
+        """Apply realistic paddle hit physics."""
+        ball_vel = self.sim.ball_velocity()
+        ball_speed = self.sim.ball_speed()
+
+        # Paddle normal direction (facing opponent)
+        if self.side == "left":
+            normal_x = 1.0  # Facing right
+            swing_dir = 1.0
+        else:
+            normal_x = -1.0  # Facing left
+            swing_dir = -1.0
+
+        # Paddle angle affects the hit
+        # For topspin: paddle tilted forward, brushing up on ball
+        paddle_angle = math.radians(15)  # 15 degrees closed (forward tilt)
+
+        # Swing velocity (paddle moving forward and slightly up for topspin)
+        swing_speed = self.swing_speed
+        swing_vx = swing_dir * swing_speed * math.cos(paddle_angle)
+        swing_vy = swing_speed * 0.3  # Upward brush for topspin
+
+        # Reflect ball velocity off paddle
+        # New velocity = reflection + paddle contribution
+        incoming_vx = ball_vel.x
+        incoming_vy = ball_vel.y
+        incoming_vz = ball_vel.z
+
+        # Simple reflection with paddle angle
+        # The paddle imparts its velocity to the ball
+        new_vx = swing_vx * 0.8 + (-incoming_vx * self.RESTITUTION * 0.2)
+        new_vy = incoming_vy * self.RESTITUTION * 0.5 + swing_vy
+        new_vz = incoming_vz * 0.7  # Reduce lateral speed slightly
+
+        # Add slight angle towards diagonal (topspin forehand goes cross-court)
+        cross_court_z = 0.15 * swing_dir  # Slight cross-court tendency
+        new_vz += cross_court_z * swing_speed
+
+        # Ensure minimum forward speed
+        min_forward_speed = 4.0
+        if abs(new_vx) < min_forward_speed:
+            new_vx = swing_dir * min_forward_speed
+
+        self.sim.set_ball_velocity(new_vx, new_vy, new_vz)
+
+        # Apply topspin from brushing action
+        # Positive Z spin for ball going +X (right), negative for -X
+        topspin_rpm = 2500 * swing_dir
+        self.sim.set_ball_spin_rpm(0, 0, topspin_rpm)
+
+
+class RallyController:
+    """Controls rally with real paddle physics."""
+
+    def __init__(self, sim: Simulation, paddle_left: Entity, paddle_right: Entity):
+        self.sim = sim
+        self.paddle_left_entity = paddle_left
+        self.paddle_right_entity = paddle_right
+
+        half_length, half_width, height, net_height = sim.table_dimensions()
+        self.half_length = half_length
+        self.surface_y = sim.table_surface_y()
+
+        # Create paddle physics controllers
+        self.paddle_left = PaddlePhysics(paddle_left, "left", sim)
+        self.paddle_right = PaddlePhysics(paddle_right, "right", sim)
+
+        self.hit_count = 0
+        self.last_hitter = None
+
+    def start_rally(self):
+        """Start rally with serve from left side."""
+        self.sim.reset()
+        self.hit_count = 0
+        self.last_hitter = None
+
+        # Ball starts at left side, above table
+        start_x = -self.half_length - 0.15
+        start_y = self.surface_y + 0.25
+        start_z = -0.3  # Slightly to forehand side
+
+        self.sim.set_ball_position(start_x, start_y, start_z)
+
+        # Initial serve: forward with topspin
+        serve_speed = 6.0
+        serve_angle = math.radians(10)  # Slight upward angle
+        vx = serve_speed * math.cos(serve_angle)
+        vy = serve_speed * math.sin(serve_angle)
+        vz = 0.3  # Slight cross-court
+
+        self.sim.set_ball_velocity(vx, vy, vz)
+        self.sim.set_ball_spin_rpm(0, 0, 2000)  # Topspin
+
+        self.hit_count = 1
+        self.last_hitter = "left"
+
+    def update(self, dt: float):
+        """Update paddle AI and check for hits."""
+        # Update both paddles
+        if self.paddle_left.update(dt):
+            if self.last_hitter != "left":
+                self.hit_count += 1
+                self.last_hitter = "left"
+
+        if self.paddle_right.update(dt):
+            if self.last_hitter != "right":
+                self.hit_count += 1
+                self.last_hitter = "right"
 
 
 # =============================================================================
@@ -518,8 +649,8 @@ def main():
     paddle_right.position = (half_length + 0.3, surface_y + 0.15, 0)
     paddle_right.rotation = (0, -90, -15)
 
-    # Scripted rally controller
-    rally = ScriptedRally(state.sim, paddle_left, paddle_right)
+    # Rally controller with real paddle physics
+    rally = RallyController(state.sim, paddle_left, paddle_right)
     rally.start_rally()  # Start automatically
 
     # Trajectory renderer
@@ -552,9 +683,9 @@ def update():
     # Physics step
     state.step(time.dt)
 
-    # Update rally (check for hits)
+    # Update rally (paddle AI + collision detection)
     if not state.paused:
-        rally.update()
+        rally.update(time.dt * state.time_scale)
 
     # Update ball position
     pos = state.sim.ball_position()
