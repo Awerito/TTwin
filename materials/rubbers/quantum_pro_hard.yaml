@@ -1,0 +1,25 @@
+name: "Quantum X Pro Hard"
+manufacturer: "Tibhar"
+ittf_approved: true
+
+# German tensor rubber - Hard sponge version
+# Known for: direct feel, high speed, good spin on hard contact
+
+# Contact properties - harder sponge = more direct energy transfer
+restitution: 0.93
+friction_static: 0.88
+friction_dynamic: 0.72
+
+# Hertzian contact model - stiffer due to hard sponge
+stiffness: 52000.0
+damping: 0.06
+
+# Spin characteristics - needs more force to engage
+spin_transfer_rate: 0.82
+spin_reversal_factor: 0.55
+
+# Metadata
+speed_rating: 14.0
+spin_rating: 11.0
+hardness_sponge: 47.5
+thickness_mm: 2.0

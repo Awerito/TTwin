@@ -14,8 +14,8 @@
 pub mod collision;
 pub mod forces;
 pub mod integrator;
+pub mod materials;
 pub mod types;
 
 // These modules will be implemented incrementally
-// pub mod materials;
 // pub mod simulation;

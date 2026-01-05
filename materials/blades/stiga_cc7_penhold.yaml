@@ -1,0 +1,21 @@
+name: "Cybershape CC7"
+manufacturer: "Stiga"
+
+# Carbon Crystal 7 - 7-ply with carbon layers
+# Penhold version - JPen style handle
+
+# Physical properties
+thickness_mm: 5.8
+weight_g: 88.0
+
+# Stiffness factor (0-1, higher = stiffer)
+# Carbon blades are notably stiffer than all-wood
+stiffness: 0.85
+
+# Handle type
+handle: "penhold"
+
+# Additional metadata (not used in physics, for reference)
+plies: 7
+composition: "wood + carbon crystal"
+speed_class: "OFF+"

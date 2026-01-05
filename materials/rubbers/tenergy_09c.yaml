@@ -1,0 +1,25 @@
+name: "Tenergy 09C"
+manufacturer: "Butterfly"
+ittf_approved: true
+
+# Tacky version of Tenergy - Spring Sponge X with grippy topsheet
+# The "C" stands for "Chou" (tacky in Japanese table tennis slang)
+
+# Contact properties - tackier than regular Tenergy
+restitution: 0.90
+friction_static: 0.95
+friction_dynamic: 0.82
+
+# Hertzian contact model
+stiffness: 44000.0
+damping: 0.09
+
+# Spin characteristics - excellent grip for heavy spin
+spin_transfer_rate: 0.90
+spin_reversal_factor: 0.70
+
+# Metadata
+speed_rating: 12.5
+spin_rating: 12.0
+hardness_sponge: 36.0
+thickness_mm: 2.1
