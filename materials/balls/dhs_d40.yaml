@@ -1,0 +1,13 @@
+name: "DHS D40+ 3-star"
+manufacturer: "DHS"
+
+# Physical properties
+mass: 0.00267           # kg (2.67g)
+radius: 0.020           # m (40mm diameter)
+
+# Collision properties
+restitution_table: 0.77  # Bounce coefficient on ITTF table
+
+# Aerodynamic properties
+drag_coefficient: 0.4    # Cd for sphere with seam
+lift_coefficient: 0.35   # CL for Magnus effect

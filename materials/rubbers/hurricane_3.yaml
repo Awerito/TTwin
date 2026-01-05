@@ -1,0 +1,23 @@
+name: "Hurricane 3 National"
+manufacturer: "DHS"
+ittf_approved: true
+
+# Contact properties
+# Chinese tacky rubber - more grip, less speed
+restitution: 0.85
+friction_static: 0.95
+friction_dynamic: 0.82
+
+# Hertzian contact model parameters
+stiffness: 52000.0    # Harder rubber
+damping: 0.12         # More energy absorption
+
+# Spin characteristics
+spin_transfer_rate: 0.92     # Excellent spin generation
+spin_reversal_factor: 0.75   # Very tacky surface grabs spin
+
+# Metadata (reference only)
+speed_rating: 10.0
+spin_rating: 12.5
+hardness_sponge: 40.0
+thickness_mm: 2.15

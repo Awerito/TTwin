@@ -1,0 +1,22 @@
+name: "Tenergy 05"
+manufacturer: "Butterfly"
+ittf_approved: true
+
+# Contact properties
+restitution: 0.92
+friction_static: 0.9
+friction_dynamic: 0.75
+
+# Hertzian contact model parameters
+stiffness: 45000.0    # N/m^1.5
+damping: 0.08         # Energy loss factor
+
+# Spin characteristics
+spin_transfer_rate: 0.85     # How much paddle spin transfers to ball
+spin_reversal_factor: 0.6    # How much incoming spin is "grabbed" and reversed
+
+# Metadata (reference only)
+speed_rating: 13.0
+spin_rating: 11.5
+hardness_sponge: 36.0        # Japanese degrees
+thickness_mm: 2.1

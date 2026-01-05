@@ -1,0 +1,8 @@
+name: "ITTF Standard"
+
+# ITTF regulation specifies bounce height of 23cm when dropped from 30cm
+# This gives a coefficient of restitution of sqrt(23/30) ≈ 0.876
+# However, real-world measurements show ~0.77 for ball-table interaction
+
+restitution: 0.77
+friction: 0.5

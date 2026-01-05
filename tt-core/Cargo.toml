@@ -1,0 +1,17 @@
+[package]
+name = "tt-core"
+version = "0.1.0"
+edition = "2021"
+description = "Physics engine for table tennis simulation"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+
+[dev-dependencies]
+approx = "0.5"
+
+[lib]
+name = "tt_core"
+path = "src/lib.rs"
