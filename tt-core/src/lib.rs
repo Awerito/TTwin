@@ -11,11 +11,11 @@
 //! - `materials`: YAML-based material configuration loader
 //! - `simulation`: Main orchestrator
 
+pub mod collision;
+pub mod forces;
 pub mod integrator;
 pub mod types;
 
 // These modules will be implemented incrementally
-// pub mod forces;
-// pub mod collision;
 // pub mod materials;
 // pub mod simulation;
