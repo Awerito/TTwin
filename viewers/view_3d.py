@@ -147,6 +147,112 @@ class GameState:
 
 
 # =============================================================================
+# Scripted Rally - Forehand topspin diagonal
+# =============================================================================
+
+
+class ScriptedRally:
+    """Simple scripted rally: forehand topspin diagonal back and forth."""
+
+    def __init__(self, sim: Simulation, paddle_left: Entity, paddle_right: Entity):
+        self.sim = sim
+        self.paddle_left = paddle_left
+        self.paddle_right = paddle_right
+
+        half_length, half_width, height, net_height = sim.table_dimensions()
+        self.half_length = half_length
+        self.half_width = half_width
+        self.surface_y = sim.table_surface_y()
+
+        # Hit zones (x position where we detect and apply hit)
+        self.hit_x_left = -half_length - 0.2
+        self.hit_x_right = half_length + 0.2
+
+        # Rally parameters
+        self.hit_speed = 8.0  # m/s
+        self.hit_angle_v = 12.0  # degrees up
+        self.topspin_rpm = 3000.0
+
+        # Diagonal positions (forehand corners)
+        self.z_left = -half_width * 0.6  # Left player forehand side
+        self.z_right = half_width * 0.6  # Right player forehand side
+
+        # Track state
+        self.last_hit_side = None
+        self.hit_count = 0
+
+    def start_rally(self):
+        """Start a rally from the left side."""
+        self.sim.reset()
+        self.hit_count = 0
+        self.last_hit_side = None
+
+        # Position paddles at diagonal corners
+        self.paddle_left.z = self.z_left
+        self.paddle_right.z = self.z_right
+
+        # Ball starts at left paddle, launch towards right diagonal
+        # Use explicit values: table surface ~0.76m, start 0.2m above
+        start_x = -self.half_length - 0.1  # Just past left edge
+        start_y = 0.96  # ~0.76 + 0.2 above table
+        start_z = self.z_left
+
+        self.sim.set_ball_position(start_x, start_y, start_z)
+        self._hit_towards("right")
+        self.last_hit_side = "left"
+        self.hit_count = 1
+
+    def _hit_towards(self, target_side: str):
+        """Apply a forehand topspin hit towards target side."""
+        # Target position
+        target_z = self.z_right if target_side == "right" else self.z_left
+        target_x = self.hit_x_right if target_side == "right" else self.hit_x_left
+
+        pos = self.sim.ball_position()
+
+        # Calculate direction
+        dx = target_x - pos.x
+        dz = target_z - pos.z
+        dist_xz = math.sqrt(dx * dx + dz * dz)
+
+        # Velocity components
+        angle_v_rad = math.radians(self.hit_angle_v)
+        v_horizontal = self.hit_speed * math.cos(angle_v_rad)
+        vy = self.hit_speed * math.sin(angle_v_rad)
+
+        # Direction in XZ plane
+        vx = v_horizontal * (dx / dist_xz)
+        vz = v_horizontal * (dz / dist_xz)
+
+        self.sim.set_ball_velocity(vx, vy, vz)
+
+        # Topspin (positive Z spin for ball moving in +X)
+        spin_direction = 1 if dx > 0 else -1
+        self.sim.set_ball_spin_rpm(0, 0, self.topspin_rpm * spin_direction)
+
+    def update(self):
+        """Check for hits and apply them."""
+        pos = self.sim.ball_position()
+        vel = self.sim.ball_velocity()
+
+        # Check if ball reached right side (moving right)
+        if vel.x > 0 and pos.x > self.hit_x_right and self.last_hit_side != "right":
+            # Right paddle hits back to left
+            self.paddle_right.z = pos.z  # Move paddle to ball
+            self._hit_towards("left")
+            self.last_hit_side = "right"
+            self.hit_count += 1
+
+        # Check if ball reached left side (moving left)
+        elif vel.x < 0 and pos.x < self.hit_x_left and self.last_hit_side != "left":
+            # Left paddle hits back to right
+            self.paddle_left.z = pos.z  # Move paddle to ball
+            self._hit_towards("right")
+            self.last_hit_side = "left"
+            self.hit_count += 1
+
+
+# =============================================================================
 # 3D Entities
 # =============================================================================
 
@@ -191,9 +297,10 @@ def create_net(sim: Simulation) -> Entity:
     net = E(model="cube", color=color.light_gray,
             scale=(0.01, net_height, half_width * 2 + 0.1),
             position=(0, surface_y + net_height / 2, 0))
-    E(model="cylinder", color=color.gray, scale=(0.015, net_height + 0.02, 0.015),
+    # Net posts (use cube instead of cylinder - cylinder not available)
+    E(model="cube", color=color.gray, scale=(0.02, net_height + 0.02, 0.02),
       position=(0, surface_y + net_height / 2, -half_width - 0.05))
-    E(model="cylinder", color=color.gray, scale=(0.015, net_height + 0.02, 0.015),
+    E(model="cube", color=color.gray, scale=(0.02, net_height + 0.02, 0.02),
       position=(0, surface_y + net_height / 2, half_width + 0.05))
     return net
 
@@ -267,7 +374,7 @@ def create_ui(state: GameState) -> dict:
     ui["time_text"] = Text(
         parent=camera.ui,
         text="",
-        position=(-0.82, -0.28),
+        position=(-0.65, -0.28),
         scale=0.9,
         color=color.white,
     )
@@ -275,7 +382,7 @@ def create_ui(state: GameState) -> dict:
     ui["speed_text"] = Text(
         parent=camera.ui,
         text="",
-        position=(-0.82, -0.32),
+        position=(-0.65, -0.32),
         scale=0.8,
         color=color.white,
     )
@@ -283,7 +390,7 @@ def create_ui(state: GameState) -> dict:
     ui["spin_text"] = Text(
         parent=camera.ui,
         text="",
-        position=(-0.82, -0.36),
+        position=(-0.65, -0.36),
         scale=0.8,
         color=color.white,
     )
@@ -291,7 +398,7 @@ def create_ui(state: GameState) -> dict:
     ui["launch_text"] = Text(
         parent=camera.ui,
         text="",
-        position=(-0.82, -0.40),
+        position=(-0.65, -0.40),
         scale=0.7,
         color=color.light_gray,
     )
@@ -299,15 +406,15 @@ def create_ui(state: GameState) -> dict:
     ui["time_scale_text"] = Text(
         parent=camera.ui,
         text="",
-        position=(-0.82, -0.44),
+        position=(-0.65, -0.44),
         scale=0.8,
         color=color.yellow,
     )
 
     ui["controls_text"] = Text(
         parent=camera.ui,
-        text="SPACE:Launch R:Reset T:Spin 1-5:Speed",
-        position=(-0.82, -0.48),
+        text="SPACE:Rally  R:Reset  1-5:Speed",
+        position=(-0.65, -0.48),
         scale=0.6,
         color=color.gray,
     )
@@ -318,6 +425,14 @@ def create_ui(state: GameState) -> dict:
         position=(0.5, 0.45),
         scale=1.2,
         color=color.yellow,
+    )
+
+    ui["hit_count_text"] = Text(
+        parent=camera.ui,
+        text="",
+        position=(0, 0.45),
+        scale=1.5,
+        color=color.green,
     )
 
     return ui
@@ -359,7 +474,22 @@ def update_ui(ui: dict, state: GameState):
 # =============================================================================
 
 
+# =============================================================================
+# Global state (needed for Ursina's update pattern)
+# =============================================================================
+
+app = None
+state = None
+rally = None
+ball = None
+trajectory_renderer = None
+ui = None
+spin_indicator = None
+
+
 def main():
+    global app, state, rally, ball, trajectory_renderer, ui, spin_indicator
+
     app = Ursina(
         title="Table Tennis Physics - 3D View",
         borderless=False,
@@ -369,7 +499,6 @@ def main():
 
     # Game state
     state = GameState()
-    state.launch_ball()
 
     # Create scene
     floor = create_floor()
@@ -388,6 +517,10 @@ def main():
     paddle_right = create_paddle()
     paddle_right.position = (half_length + 0.3, surface_y + 0.15, 0)
     paddle_right.rotation = (0, -90, -15)
+
+    # Scripted rally controller
+    rally = ScriptedRally(state.sim, paddle_left, paddle_right)
+    rally.start_rally()  # Start automatically
 
     # Trajectory renderer
     trajectory_renderer = TrajectoryRenderer()
@@ -408,74 +541,83 @@ def main():
     # Spin indicator on ball
     spin_indicator = E(model="cube", color=color.red, scale=(0.002, 0.05, 0.002), parent=ball)
 
-    def update():
-        # Physics step
-        state.step(time.dt)
-
-        # Update ball position
-        pos = state.sim.ball_position()
-        ball.position = (pos.x, pos.y, pos.z)
-
-        # Update spin indicator rotation
-        spin = state.sim.ball_spin()
-        if state.sim.ball_spin_rpm() > 100:
-            spin_indicator.visible = True
-            spin_indicator.color = SPIN_COLORS[state.spin_type]
-            # Rotate based on spin axis
-            spin_indicator.rotation = (
-                math.degrees(math.atan2(spin.z, spin.y)),
-                math.degrees(math.atan2(spin.x, spin.z)),
-                0,
-            )
-        else:
-            spin_indicator.visible = False
-
-        # Update trajectory
-        trajectory_renderer.update_trajectory(state.trajectory)
-
-        # Update UI
-        update_ui(ui, state)
-
-    def input(key):
-        if key == "space":
-            state.launch_ball()
-        elif key == "r":
-            state.sim.reset()
-            state.trajectory.clear()
-        elif key == "t":
-            state.spin_type = (state.spin_type + 1) % 5
-        elif key == "s":
-            if state.spin_type == SPIN_SIDESPIN_RIGHT:
-                state.spin_type = SPIN_SIDESPIN_LEFT
-            elif state.spin_type == SPIN_SIDESPIN_LEFT:
-                state.spin_type = SPIN_SIDESPIN_RIGHT
-        elif key == "p":
-            state.paused = not state.paused
-        elif key == "up arrow":
-            state.launch_angle_v = min(state.launch_angle_v + 5, 45)
-        elif key == "down arrow":
-            state.launch_angle_v = max(state.launch_angle_v - 5, -15)
-        elif key == "right arrow":
-            state.launch_speed = min(state.launch_speed + 1, 25)
-        elif key == "left arrow":
-            state.launch_speed = max(state.launch_speed - 1, 2)
-        elif key == "d":
-            state.launch_angle_h = min(state.launch_angle_h + 5, 45)
-        elif key == "a":
-            state.launch_angle_h = max(state.launch_angle_h - 5, -45)
-        elif key == "c":
-            # Reset camera
-            ec.rotation = Vec3(30, -45, 0)
-            camera.z = -4
-        elif key in TIME_SCALES:
-            state.time_scale = TIME_SCALES[key]
-        elif key == "escape":
-            application.quit()
-
-    app.update = update
-    app.input = input
-
     app.run()
+
+
+def update():
+    """Called every frame by Ursina."""
+    if state is None:
+        return
+
+    # Physics step
+    state.step(time.dt)
+
+    # Update rally (check for hits)
+    if not state.paused:
+        rally.update()
+
+    # Update ball position
+    pos = state.sim.ball_position()
+    ball.position = (pos.x, pos.y, pos.z)
+
+    # Update spin indicator rotation
+    spin = state.sim.ball_spin()
+    if state.sim.ball_spin_rpm() > 100:
+        spin_indicator.visible = True
+        spin_indicator.color = SPIN_COLORS[state.spin_type]
+        # Rotate based on spin axis
+        spin_indicator.rotation = (
+            math.degrees(math.atan2(spin.z, spin.y)),
+            math.degrees(math.atan2(spin.x, spin.z)),
+            0,
+        )
+    else:
+        spin_indicator.visible = False
+
+    # Update trajectory
+    trajectory_renderer.update_trajectory(state.trajectory)
+
+    # Update UI
+    update_ui(ui, state)
+    ui["hit_count_text"].text = f"Hits: {rally.hit_count}"
+
+
+def input(key):
+    """Handle keyboard input."""
+    if state is None:
+        return
+
+    if key == "space" or key == "e":
+        rally.start_rally()
+        state.trajectory.clear()
+    elif key == "r":
+        state.sim.reset()
+        state.trajectory.clear()
+    elif key == "t":
+        state.spin_type = (state.spin_type + 1) % 5
+    elif key == "s":
+        if state.spin_type == SPIN_SIDESPIN_RIGHT:
+            state.spin_type = SPIN_SIDESPIN_LEFT
+        elif state.spin_type == SPIN_SIDESPIN_LEFT:
+            state.spin_type = SPIN_SIDESPIN_RIGHT
+    elif key == "p":
+        state.paused = not state.paused
+    elif key == "up arrow":
+        state.launch_angle_v = min(state.launch_angle_v + 5, 45)
+    elif key == "down arrow":
+        state.launch_angle_v = max(state.launch_angle_v - 5, -15)
+    elif key == "right arrow":
+        state.launch_speed = min(state.launch_speed + 1, 25)
+    elif key == "left arrow":
+        state.launch_speed = max(state.launch_speed - 1, 2)
+    elif key == "d":
+        state.launch_angle_h = min(state.launch_angle_h + 5, 45)
+    elif key == "a":
+        state.launch_angle_h = max(state.launch_angle_h - 5, -45)
+    elif key in TIME_SCALES:
+        state.time_scale = TIME_SCALES[key]
+    elif key == "escape":
+        application.quit()
 
 
 if __name__ == "__main__":
