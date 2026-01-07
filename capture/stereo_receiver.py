@@ -10,8 +10,7 @@ Usage:
 
 Prerequisites:
     pip install opencv-python av numpy
-    adb forward tcp:9556 tcp:9556
-    adb forward tcp:9557 tcp:9557
+    adb forward tcp:9556 tcp:9556 && adb forward tcp:9557 tcp:9557
 """
 
 import socket
@@ -223,7 +222,9 @@ def main():
                 # FPS counter
                 if time.time() - fps_time > 1.0:
                     fps = fps_count / (time.time() - fps_time)
-                    cv2.setWindowTitle("Stereo Camera", f"Stereo Camera - {fps:.1f} FPS")
+                    cv2.setWindowTitle(
+                        "Stereo Camera", f"Stereo Camera - {fps:.1f} FPS"
+                    )
                     fps_time = time.time()
                     fps_count = 0
 
