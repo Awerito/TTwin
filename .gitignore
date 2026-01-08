@@ -37,6 +37,9 @@ Thumbs.db
 # Temporary/exploratory scripts
 sanity/
 
+# Calibration images (large, local only)
+capture/calibration_images/
+
 # Environment
 .env
 .env.local
