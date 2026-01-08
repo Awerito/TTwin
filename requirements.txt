@@ -10,7 +10,5 @@ pygame==2.6.1
 pyperclip==1.11.0
 screeninfo==0.8.1
 sswg==4.3.0
-# Editable Git install with no remote (tt-physics==0.1.0)
--e /home/awe/Git/ttideas/tt-py
 typing_extensions==4.15.0
 ursina==8.3.0
