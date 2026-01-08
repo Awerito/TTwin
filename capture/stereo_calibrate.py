@@ -5,19 +5,78 @@ Stereo Camera Calibration Capture
 Captures synchronized frames from stereo cameras for calibration.
 Detects checkerboard pattern and provides visual feedback.
 
-Usage:
-    python stereo_calibrate.py [--rows 6] [--cols 9] [--square-size 2.5]
+Companion app: https://github.com/Awerito/StereoVideoCamera
 
-Prerequisites:
+================================================================================
+SETUP
+================================================================================
+
+1. Install dependencies:
     pip install opencv-python av numpy
+
+2. Enable USB Debugging on phone (once per device):
+    - Settings > About phone > Tap "MIUI version" 7 times (enables Developer options)
+    - Settings > Additional settings > Developer options
+    - Enable "USB debugging"
+    - Enable "USB debugging (Security settings)" <- IMPORTANT for Xiaomi
+
+3. Connect phone via USB:
+    adb devices                 # Should show "unauthorized"
+    -> Phone shows popup "Allow USB debugging?" -> tap ALLOW (check "Always allow")
+    adb devices                 # Now shows "device" instead of "unauthorized"
     adb forward tcp:9556 tcp:9556 && adb forward tcp:9557 tcp:9557
 
-Controls:
+   Or via WiFi (if USB not possible):
+    # First with USB connected and authorized:
+    adb tcpip 5555
+    adb shell ip addr show wlan0 | grep "inet "   # Get phone IP (e.g. 192.168.1.47)
+
+    # Disconnect USB, then:
+    adb connect 192.168.1.47:5555                  # Use your phone's IP
+    adb devices                                     # Should show "device"
+    adb forward tcp:9556 tcp:9556 && adb forward tcp:9557 tcp:9557
+
+4. Generate checkerboard pattern:
+    - Go to https://calib.io/pages/camera-calibration-pattern-generator
+    - Select: Checkerboard, 9 columns, 6 rows (inner corners)
+    - Download or display FULLSCREEN on a FLAT TV/monitor
+    - Measure ONE square with a ruler (in cm) -> use with --square-size
+
+================================================================================
+USAGE
+================================================================================
+
+    python stereo_calibrate.py --square-size 4.9
+
+    (4.9 cm is the square size on a 55" TV at fullscreen)
+
+================================================================================
+CALIBRATION TIPS
+================================================================================
+
+- Capture 15-20 image pairs minimum
+- Move pattern to ALL areas of the image (corners, edges, center)
+- Tilt the pattern at different angles (not just straight-on)
+- Vary the distance from camera (close, medium, far)
+- Auto-capture is ON by default (2 sec cooldown between captures)
+
+================================================================================
+CONTROLS
+================================================================================
+
     SPACE - Capture current frames (only if checkerboard detected in both)
     a     - Toggle AUTO-CAPTURE mode (captures when pattern detected)
     c     - Capture anyway (even without detection)
     r     - Run calibration with captured images
     q/ESC - Quit
+
+================================================================================
+OUTPUT
+================================================================================
+
+    capture/calibration_images/cam0_XXX.png   - Left camera frames
+    capture/calibration_images/cam1_XXX.png   - Right camera frames
+    capture/calibration_images/stereo_calibration.npz  - Calibration result
 """
 
 import argparse
@@ -212,11 +271,15 @@ def run_calibration(rows: int, cols: int, square_size: float):
     cam1_images = sorted(CALIB_DIR.glob("cam1_*.png"))
 
     if len(cam0_images) != len(cam1_images):
-        print(f"ERROR: Mismatched image counts: {len(cam0_images)} vs {len(cam1_images)}")
+        print(
+            f"ERROR: Mismatched image counts: {len(cam0_images)} vs {len(cam1_images)}"
+        )
         return
 
     if len(cam0_images) < 10:
-        print(f"WARNING: Only {len(cam0_images)} image pairs. Recommend at least 15-20.")
+        print(
+            f"WARNING: Only {len(cam0_images)} image pairs. Recommend at least 15-20."
+        )
 
     print(f"Found {len(cam0_images)} image pairs")
 
@@ -341,8 +404,12 @@ def run_calibration(rows: int, cols: int, square_size: float):
 
 def main():
     parser = argparse.ArgumentParser(description="Stereo camera calibration capture")
-    parser.add_argument("--rows", type=int, default=6, help="Inner corner rows (default: 6)")
-    parser.add_argument("--cols", type=int, default=9, help="Inner corner cols (default: 9)")
+    parser.add_argument(
+        "--rows", type=int, default=6, help="Inner corner rows (default: 6)"
+    )
+    parser.add_argument(
+        "--cols", type=int, default=9, help="Inner corner cols (default: 9)"
+    )
     parser.add_argument(
         "--square-size",
         type=float,
@@ -456,7 +523,13 @@ def main():
                     color = (0, 255, 0) if found0 else (0, 0, 255)
                     cv2.circle(f0, (30, 30), 15, color, -1)
                     cv2.putText(
-                        f0, "CAM0", (50, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2
+                        f0,
+                        "CAM0",
+                        (50, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1,
+                        (255, 255, 255),
+                        2,
                     )
                     f0 = cv2.resize(f0, (w, h))
                 else:
@@ -468,7 +541,13 @@ def main():
                     color = (0, 255, 0) if found1 else (0, 0, 255)
                     cv2.circle(f1, (30, 30), 15, color, -1)
                     cv2.putText(
-                        f1, "CAM1", (50, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2
+                        f1,
+                        "CAM1",
+                        (50, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1,
+                        (255, 255, 255),
+                        2,
                     )
                     f1 = cv2.resize(f1, (w, h))
                 else:
@@ -496,8 +575,12 @@ def main():
             # SPACE - capture if pattern detected
             if key == ord(" "):
                 if found0 and found1 and frame0 is not None and frame1 is not None:
-                    cv2.imwrite(str(CALIB_DIR / f"cam0_{capture_count:03d}.png"), frame0)
-                    cv2.imwrite(str(CALIB_DIR / f"cam1_{capture_count:03d}.png"), frame1)
+                    cv2.imwrite(
+                        str(CALIB_DIR / f"cam0_{capture_count:03d}.png"), frame0
+                    )
+                    cv2.imwrite(
+                        str(CALIB_DIR / f"cam1_{capture_count:03d}.png"), frame1
+                    )
                     print(f"Captured pair {capture_count}")
                     capture_count += 1
                 else:
@@ -511,8 +594,12 @@ def main():
             # c - force capture
             elif key == ord("c"):
                 if frame0 is not None and frame1 is not None:
-                    cv2.imwrite(str(CALIB_DIR / f"cam0_{capture_count:03d}.png"), frame0)
-                    cv2.imwrite(str(CALIB_DIR / f"cam1_{capture_count:03d}.png"), frame1)
+                    cv2.imwrite(
+                        str(CALIB_DIR / f"cam0_{capture_count:03d}.png"), frame0
+                    )
+                    cv2.imwrite(
+                        str(CALIB_DIR / f"cam1_{capture_count:03d}.png"), frame1
+                    )
                     print(f"Force captured pair {capture_count}")
                     capture_count += 1
 
