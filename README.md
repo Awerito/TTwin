@@ -1,6 +1,8 @@
-# 🏓 TT Ideas - Table Tennis Physics Simulator
+# 🏓 TTwin - Table Tennis Digital Twin
 
-A physics-accurate table tennis simulator built with Rust and Python. Simulates real ball physics including spin, Magnus effect, and realistic bounces.
+A physics-accurate table tennis simulator built with Rust and Python. The name
+**TTwin** combines **TT** (Table Tennis) + **Twin** (Digital Twin) - a virtual
+replica of real-world table tennis physics.
 
 ![3D View](https://img.shields.io/badge/3D-Ursina-blue)
 ![Physics](https://img.shields.io/badge/Physics-Rust-orange)
@@ -13,14 +15,33 @@ A physics-accurate table tennis simulator built with Rust and Python. Simulates 
 - **Topspin/Backspin/Sidespin** - Different spins behave differently
 - **Table & Net Collision** - Accurate bounce physics
 - **Multiple Viewers** - 2D (pygame) and 3D (Ursina) visualization
+- **Stereo Camera Capture** - 3D tracking via dual-camera phone setup
 - **Slow Motion** - See the physics in detail
+
+## System Overview
+
+```
+┌─────────────────────────┐         ┌─────────────────────────┐
+│   StereoVideoCamera     │   USB   │        TTwin            │
+│   (Android App)         │ ──────► │   (Physics Simulator)   │
+│                         │  WiFi   │                         │
+│ • Dual camera capture   │         │ • Stereo calibration    │
+│ • 1080p @ 60fps         │         │ • 3D body tracking      │
+│ • TCP streaming         │         │ • Physics simulation    │
+└─────────────────────────┘         └─────────────────────────┘
+       Xiaomi 14T                          PC (Linux)
+```
+
+📱 **Companion App:**
+[StereoVideoCamera](https://github.com/Awerito/StereoVideoCamera) - Android app
+for stereo video capture
 
 ## Quick Start
 
 ```bash
 # Clone and setup
-git clone <repo>
-cd ttideas
+git clone https://github.com/Awerito/TTwin
+cd TTwin
 python -m venv env
 source env/bin/activate
 pip install -r requirements.txt
@@ -71,6 +92,30 @@ Classic side view for analyzing trajectories.
 | `T` | Toggle topspin/backspin |
 | `↑/↓` | Adjust launch angle |
 | `←/→` | Adjust launch speed |
+
+## Stereo Camera Capture
+
+The `capture/` module handles stereo video from a dual-camera phone for 3D tracking.
+
+### Setup
+
+1. Install [StereoVideoCamera](https://github.com/Awerito/StereoVideoCamera) on
+   your Android phone
+2. Connect via USB or WiFi (ADB)
+3. Forward ports: `adb forward tcp:9556 tcp:9556 && adb forward tcp:9557
+   tcp:9557`
+
+### Usage
+
+```bash
+# View stereo feed
+python capture/stereo_receiver.py
+
+# Calibrate cameras (for 3D reconstruction)
+python capture/stereo_calibrate.py --square-size 4.9
+```
+
+See [CLAUDE.md](CLAUDE.md) for detailed calibration instructions.
 
 ## Physics Engine
 
@@ -133,7 +178,7 @@ surface_y = sim.table_surface_y()  # ~0.76m
 ## Project Structure
 
 ```
-ttideas/
+TTwin/
 ├── tt-core/                 # Rust physics engine
 │   ├── Cargo.toml
 │   └── src/
@@ -143,6 +188,9 @@ ttideas/
 │   ├── view_3d.py          # 3D Ursina viewer
 │   ├── side_view.py        # 2D pygame side view
 │   └── dual_view.py        # 2D pygame dual view
+├── capture/
+│   ├── stereo_receiver.py  # View stereo feed from phone
+│   └── stereo_calibrate.py # Camera calibration
 ├── sanity/                  # Test scripts
 ├── requirements.txt
 ├── CLAUDE.md               # Development notes
@@ -201,10 +249,18 @@ python viewers/side_view.py
 - [x] 2D viewers (side, dual)
 - [x] 3D viewer
 - [x] Spin physics (Magnus effect)
+- [x] Stereo camera capture
+- [ ] Stereo calibration complete
+- [ ] 3D body tracking
 - [ ] Paddle collision physics
 - [ ] Continuous rally
 - [ ] Player control
 - [ ] Scoring system
+
+## Related Projects
+
+- [StereoVideoCamera](https://github.com/Awerito/StereoVideoCamera) - Android
+app for dual-camera stereo capture
 
 ## License
 
