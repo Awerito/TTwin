@@ -58,7 +58,7 @@ CALIBRATION TIPS
 - Move pattern to ALL areas of the image (corners, edges, center)
 - Tilt the pattern at different angles (not just straight-on)
 - Vary the distance from camera (close, medium, far)
-- Auto-capture is ON by default (2 sec cooldown between captures)
+- Press SPACE to capture when pattern is detected in both cameras
 
 ================================================================================
 CONTROLS
@@ -226,7 +226,6 @@ class CheckerboardDetector:
     """Detects checkerboard pattern in images."""
 
     def __init__(self, rows: int, cols: int):
-        # rows/cols are INNER CORNERS, not squares
         self.pattern_size = (cols, rows)
         self.criteria = (
             cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
@@ -235,18 +234,11 @@ class CheckerboardDetector:
         )
 
     def detect(self, img: np.ndarray) -> tuple[bool, np.ndarray | None]:
-        """
-        Detect checkerboard in image.
-        Returns (found, corners) where corners is refined if found.
-        """
+        """Detect checkerboard - using official OpenCV example approach."""
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        found, corners = cv2.findChessboardCorners(
-            gray,
-            self.pattern_size,
-            cv2.CALIB_CB_ADAPTIVE_THRESH
-            + cv2.CALIB_CB_NORMALIZE_IMAGE
-            + cv2.CALIB_CB_FAST_CHECK,
-        )
+
+        # Simple call like official OpenCV tutorial
+        found, corners = cv2.findChessboardCorners(gray, self.pattern_size, None)
 
         if found:
             corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), self.criteria)
@@ -465,16 +457,15 @@ def main():
     found1 = False
     capture_count = len(list(CALIB_DIR.glob("cam0_*.png")))
 
-    detect_every_n = 10  # Only detect every N frames to avoid blocking
-    frame_counter = 0
-    auto_capture = True  # Auto-capture when pattern detected in both
+    auto_capture = False  # Manual capture with SPACE (press 'a' to enable auto)
     last_capture_time = 0
     auto_capture_cooldown = 2.0  # Seconds between auto-captures
+    last_detect_time = 0
+    detect_interval = 0.2  # Detect every 200ms to avoid lag
 
     try:
         while True:
             # Get frames from queue (consume all, keep last)
-            got_new_frame = False
             try:
                 while True:
                     name, frame = frame_queue.get_nowait()
@@ -482,21 +473,19 @@ def main():
                         frame0 = frame.copy()
                     else:
                         frame1 = frame.copy()
-                    got_new_frame = True
             except Empty:
                 pass
 
-            # Only run detection every N frames to avoid blocking display
-            frame_counter += 1
-            if got_new_frame and frame_counter >= detect_every_n:
-                frame_counter = 0
+            # Run detection periodically (not every frame - too slow)
+            current_time = time.time()
+            if (current_time - last_detect_time) > detect_interval:
+                last_detect_time = current_time
                 if frame0 is not None:
                     found0, corners0 = detector.detect(frame0)
                 if frame1 is not None:
                     found1, corners1 = detector.detect(frame1)
 
             # Auto-capture when both patterns detected
-            current_time = time.time()
             if (
                 auto_capture
                 and found0
