@@ -1,34 +1,189 @@
 #!/usr/bin/env python3
 """
-OAK-D Pose Estimation with Tracking
+OAK-D Pose Estimation with Feet Detail
 
-Uses OAK-D as camera, runs YOLOv8 Pose + ByteTrack on CPU.
-Each person gets a persistent ID that survives occlusions.
+MediaPipe Pose: 33 keypoints including 6 foot points:
+- Ankles (27, 28)
+- Heels (29, 30)
+- Toes (31, 32)
 
-Performance: ~32 FPS with ~30ms latency on Ryzen 7 5700X.
+Features:
+- EMA smoothing to reduce jitter
+- Simple tracking with persistent IDs
+- Model selection: lite, full, heavy
+
+Performance: ~30 FPS, ~20ms inference with "full" model on Ryzen 7 5700X
 
 Usage:
-    python oak/pose.py
+    python oak/pose.py [--model lite|full|heavy]
 """
 
+import argparse
 import time
+import urllib.request
+from pathlib import Path
 
 import cv2
 import depthai as dai
-from ultralytics import YOLO
+import mediapipe as mp
+import numpy as np
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 
 from config import CAMERA_IP
 
-# COCO pose skeleton connections (17 keypoints)
-SKELETON = [
-    (0, 1), (0, 2), (1, 3), (2, 4),  # Head
-    (5, 6), (5, 7), (7, 9), (6, 8), (8, 10),  # Arms
-    (5, 11), (6, 12), (11, 12),  # Torso
-    (11, 13), (13, 15), (12, 14), (14, 16),  # Legs
-]
+
+MODELS_DIR = Path(__file__).parent / "models"
+
+POSE_MODELS = {
+    "lite": {
+        "url": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+        "file": "pose_landmarker_lite.task",
+    },
+    "full": {
+        "url": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
+        "file": "pose_landmarker_full.task",
+    },
+    "heavy": {
+        "url": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task",
+        "file": "pose_landmarker_heavy.task",
+    },
+}
+
+
+def download_model(url: str, path: Path) -> None:
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading {path.name}...")
+    urllib.request.urlretrieve(url, path)
+    print(f"  Downloaded to {path}")
+
+
+class PoseTracker:
+    """Pose tracker with smoothing and persistent IDs."""
+
+    CONNECTIONS = [
+        (11, 12), (11, 13), (13, 15), (12, 14), (14, 16),  # Arms
+        (11, 23), (12, 24), (23, 24),  # Torso
+        (23, 25), (25, 27), (24, 26), (26, 28),  # Legs
+        (27, 29), (27, 31), (29, 31),  # Left foot
+        (28, 30), (28, 32), (30, 32),  # Right foot
+    ]
+    FEET_INDICES = {27, 28, 29, 30, 31, 32}
+    WRIST_INDICES = {15, 16}
+
+    def __init__(self):
+        self.tracks = {}
+        self.next_id = 1
+        self.smoothing_alpha = 0.4
+        self.smoothing_enabled = True
+
+    def _get_centroid(self, landmarks, w, h):
+        if len(landmarks) > 24:
+            x = (landmarks[23].x + landmarks[24].x) / 2 * w
+            y = (landmarks[23].y + landmarks[24].y) / 2 * h
+            return (x, y)
+        return None
+
+    def _match_to_track(self, centroid, threshold=100):
+        best_id = None
+        best_dist = threshold
+        for track_id, track in self.tracks.items():
+            if "centroid" in track:
+                dist = np.sqrt(
+                    (centroid[0] - track["centroid"][0]) ** 2
+                    + (centroid[1] - track["centroid"][1]) ** 2
+                )
+                if dist < best_dist:
+                    best_dist = dist
+                    best_id = track_id
+        return best_id
+
+    def update(self, pose_landmarks_list, w, h):
+        now = time.time()
+        results = []
+
+        for landmarks in pose_landmarks_list:
+            centroid = self._get_centroid(landmarks, w, h)
+            if centroid is None:
+                continue
+
+            track_id = self._match_to_track(centroid)
+            if track_id is None:
+                track_id = self.next_id
+                self.next_id += 1
+                self.tracks[track_id] = {}
+
+            smoothed = []
+            prev = self.tracks[track_id].get("landmarks", None)
+
+            for i, lm in enumerate(landmarks):
+                x, y = lm.x * w, lm.y * h
+                vis = lm.visibility if hasattr(lm, "visibility") else 1.0
+
+                if self.smoothing_enabled and prev and i < len(prev):
+                    x = self.smoothing_alpha * prev[i][0] + (1 - self.smoothing_alpha) * x
+                    y = self.smoothing_alpha * prev[i][1] + (1 - self.smoothing_alpha) * y
+
+                smoothed.append((x, y, vis))
+
+            self.tracks[track_id]["landmarks"] = smoothed
+            self.tracks[track_id]["centroid"] = centroid
+            self.tracks[track_id]["last_seen"] = now
+            results.append((track_id, smoothed))
+
+        # Remove old tracks
+        to_remove = [
+            tid for tid, t in self.tracks.items()
+            if now - t.get("last_seen", 0) > 1.0
+        ]
+        for tid in to_remove:
+            del self.tracks[tid]
+
+        return results
+
+    def draw(self, frame, track_id, landmarks):
+        for i, j in self.CONNECTIONS:
+            if i < len(landmarks) and j < len(landmarks):
+                if landmarks[i][2] > 0.5 and landmarks[j][2] > 0.5:
+                    is_foot = i in self.FEET_INDICES or j in self.FEET_INDICES
+                    color = (0, 255, 255) if is_foot else (0, 200, 0)
+                    thickness = 3 if is_foot else 2
+                    pt1 = (int(landmarks[i][0]), int(landmarks[i][1]))
+                    pt2 = (int(landmarks[j][0]), int(landmarks[j][1]))
+                    cv2.line(frame, pt1, pt2, color, thickness)
+
+        for idx, (x, y, vis) in enumerate(landmarks):
+            if vis > 0.5:
+                pt = (int(x), int(y))
+                if idx in self.FEET_INDICES:
+                    cv2.circle(frame, pt, 8, (0, 255, 255), -1)
+                    cv2.circle(frame, pt, 8, (0, 0, 0), 2)
+                elif idx in self.WRIST_INDICES:
+                    cv2.circle(frame, pt, 7, (255, 0, 255), -1)
+                elif idx >= 11:
+                    cv2.circle(frame, pt, 5, (0, 255, 0), -1)
+
+        if len(landmarks) > 0 and landmarks[0][2] > 0.5:
+            pt = (int(landmarks[0][0]) + 10, int(landmarks[0][1]) - 10)
+            cv2.putText(frame, f"ID:{track_id}", pt,
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
 
 def main():
+    parser = argparse.ArgumentParser(description="OAK-D Pose Estimation")
+    parser.add_argument(
+        "--model", choices=["lite", "full", "heavy"], default="full",
+        help="Model complexity (default: full)",
+    )
+    args = parser.parse_args()
+
+    model_info = POSE_MODELS[args.model]
+    model_path = MODELS_DIR / model_info["file"]
+    download_model(model_info["url"], model_path)
+
+    print(f"Model: {args.model}")
     print(f"Connecting to OAK-D at {CAMERA_IP}...")
 
     device_info = dai.DeviceInfo(CAMERA_IP)
@@ -36,21 +191,26 @@ def main():
     try:
         device = dai.Device(device_info)
         pipeline = dai.Pipeline(device)
-
         print(f"Connected to {device.getDeviceName()}")
 
-        # RGB Camera
         cam = pipeline.create(dai.node.Camera).build(
             boardSocket=dai.CameraBoardSocket.CAM_A
         )
-        rgb_out = cam.requestOutput((640, 480), dai.ImgFrame.Type.BGR888p, fps=50)
-
-        # Output queue - latest frame only (drop old frames)
+        rgb_out = cam.requestOutput((640, 480), dai.ImgFrame.Type.BGR888p, fps=30)
         q_rgb = rgb_out.createOutputQueue(maxSize=1, blocking=False)
 
-        print("Loading YOLOv8 Pose model...")
-        model = YOLO("yolov8n-pose.pt")
+        print(f"Loading MediaPipe Pose ({args.model})...")
+        pose_options = vision.PoseLandmarkerOptions(
+            base_options=python.BaseOptions(model_asset_path=str(model_path)),
+            running_mode=vision.RunningMode.VIDEO,
+            num_poses=2,
+            min_pose_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        pose_landmarker = vision.PoseLandmarker.create_from_options(pose_options)
         print("Model loaded!")
+
+        tracker = PoseTracker()
 
         print()
         print("Controls:")
@@ -58,122 +218,71 @@ def main():
         print("  s     - Toggle smoothing")
         print("  +/-   - Adjust smoothing (0.0-0.9)")
         print()
+        print("Colors: Yellow=Feet | Magenta=Wrists | Green=Body")
+        print()
 
         cv2.namedWindow("OAK-D Pose", cv2.WINDOW_NORMAL)
         cv2.resizeWindow("OAK-D Pose", 1280, 960)
 
         pipeline.start()
 
-        # Metrics
         fps_counter = 0
         fps_start = time.time()
         fps_display = 0.0
         inference_ms = 0.0
-
-        # Smoothing (EMA filter)
-        prev_keypoints = {}
-        smoothing_alpha = 0.4
-        smoothing_enabled = True
+        frame_timestamp = 0
 
         while pipeline.isRunning():
             in_rgb = q_rgb.tryGet()
 
             if in_rgb is not None:
                 frame = in_rgb.getCvFrame()
+                h, w = frame.shape[:2]
                 now = time.time()
+                frame_timestamp += 33
 
-                # Inference + tracking
+                mp_image = mp.Image(
+                    image_format=mp.ImageFormat.SRGB,
+                    data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB),
+                )
+
                 t0 = time.perf_counter()
-                results = model.track(frame, verbose=False, persist=True)
+                pose_result = pose_landmarker.detect_for_video(mp_image, frame_timestamp)
                 inference_ms = (time.perf_counter() - t0) * 1000
 
-                # FPS
                 fps_counter += 1
                 if now - fps_start >= 1.0:
                     fps_display = fps_counter / (now - fps_start)
                     fps_counter = 0
                     fps_start = now
 
-                # Process detections
-                num_persons = 0
-                for result in results:
-                    if result.keypoints is None:
-                        continue
+                tracks = []
+                if pose_result.pose_landmarks:
+                    tracks = tracker.update(pose_result.pose_landmarks, w, h)
 
-                    keypoints_data = result.keypoints.data.cpu().numpy()
-                    track_ids = None
-                    if result.boxes.id is not None:
-                        track_ids = result.boxes.id.cpu().numpy().astype(int)
+                for track_id, landmarks in tracks:
+                    tracker.draw(frame, track_id, landmarks)
 
-                    for idx, kps in enumerate(keypoints_data):
-                        person_id = track_ids[idx] if track_ids is not None else idx
-                        num_persons += 1
-
-                        kp_coords = []
-                        for kp_idx, kp in enumerate(kps):
-                            x, y, conf = int(kp[0]), int(kp[1]), kp[2]
-
-                            # Smoothing
-                            if smoothing_enabled and person_id in prev_keypoints:
-                                prev = prev_keypoints[person_id]
-                                if kp_idx < len(prev) and prev[kp_idx][2] > 0.3:
-                                    x = int(
-                                        smoothing_alpha * prev[kp_idx][0]
-                                        + (1 - smoothing_alpha) * x
-                                    )
-                                    y = int(
-                                        smoothing_alpha * prev[kp_idx][1]
-                                        + (1 - smoothing_alpha) * y
-                                    )
-
-                            kp_coords.append((x, y, conf))
-                            if conf > 0.3:
-                                cv2.circle(frame, (x, y), 5, (0, 0, 255), -1)
-
-                        prev_keypoints[person_id] = kp_coords
-
-                        # Skeleton
-                        for i, j in SKELETON:
-                            if i < len(kp_coords) and j < len(kp_coords):
-                                if kp_coords[i][2] > 0.3 and kp_coords[j][2] > 0.3:
-                                    cv2.line(
-                                        frame,
-                                        (kp_coords[i][0], kp_coords[i][1]),
-                                        (kp_coords[j][0], kp_coords[j][1]),
-                                        (255, 0, 0),
-                                        2,
-                                    )
-
-                        # Person ID label
-                        if kp_coords[0][2] > 0.3:
-                            cv2.putText(
-                                frame,
-                                f"ID:{person_id}",
-                                (kp_coords[0][0] + 10, kp_coords[0][1] - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.6,
-                                (0, 255, 0),
-                                2,
-                            )
-
-                # Overlay
                 cv2.putText(
                     frame, f"FPS: {fps_display:.1f}", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2,
                 )
                 cv2.putText(
-                    frame, f"Persons: {num_persons}", (10, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2
+                    frame, f"Inference: {inference_ms:.1f}ms", (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2,
                 )
                 cv2.putText(
-                    frame, f"Inference: {inference_ms:.1f}ms", (10, 90),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2
+                    frame, f"Poses: {len(tracks)}", (10, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2,
                 )
-                smooth_text = f"Smooth: {smoothing_alpha:.1f}" if smoothing_enabled else "Smooth: OFF"
+                smooth_text = (
+                    f"Smooth: {tracker.smoothing_alpha:.1f}"
+                    if tracker.smoothing_enabled else "Smooth: OFF"
+                )
                 cv2.putText(
                     frame, smooth_text, (10, 120),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7,
-                    (255, 255, 0) if smoothing_enabled else (128, 128, 128), 2
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (255, 255, 0) if tracker.smoothing_enabled else (128, 128, 128), 2,
                 )
 
                 cv2.imshow("OAK-D Pose", frame)
@@ -183,14 +292,14 @@ def main():
                 pipeline.stop()
                 break
             elif key == ord("s"):
-                smoothing_enabled = not smoothing_enabled
-                print(f"Smoothing: {'ON' if smoothing_enabled else 'OFF'}")
+                tracker.smoothing_enabled = not tracker.smoothing_enabled
+                print(f"Smoothing: {'ON' if tracker.smoothing_enabled else 'OFF'}")
             elif key in (ord("+"), ord("=")):
-                smoothing_alpha = min(0.9, smoothing_alpha + 0.1)
-                print(f"Smoothing: {smoothing_alpha:.1f}")
+                tracker.smoothing_alpha = min(0.9, tracker.smoothing_alpha + 0.1)
+                print(f"Smoothing: {tracker.smoothing_alpha:.1f}")
             elif key == ord("-"):
-                smoothing_alpha = max(0.0, smoothing_alpha - 0.1)
-                print(f"Smoothing: {smoothing_alpha:.1f}")
+                tracker.smoothing_alpha = max(0.0, tracker.smoothing_alpha - 0.1)
+                print(f"Smoothing: {tracker.smoothing_alpha:.1f}")
 
     except Exception as e:
         print(f"Error: {e}")

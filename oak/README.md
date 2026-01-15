@@ -157,27 +157,41 @@ Output:
   Calibration: Available (factory calibrated)
 ```
 
-### pose.py - Body Tracking with YOLOv8
+### pose.py - Body Tracking with MediaPipe
 
-Real-time pose estimation using YOLOv8 + ByteTrack on CPU:
+Real-time pose estimation using MediaPipe Pose on CPU:
 
 ```bash
-python oak/pose.py
+python oak/pose.py [--model lite|full|heavy]
 ```
 
-**Performance:** ~32 FPS, ~30ms inference on Ryzen 7 5700X
+**Performance:** ~30 FPS, ~20ms inference with "full" model on Ryzen 7 5700X
 
 **Features:**
-- 17 COCO keypoints per person
-- Persistent tracking IDs (survives occlusions)
+- 33 keypoints per person (vs 17 for YOLO)
+- **6 foot keypoints:** ankles, heels, toes (for footwork analysis)
+- Persistent tracking IDs
 - EMA smoothing to reduce jitter
+- Model selection (lite/full/heavy)
+
+**Keypoints:**
+- Yellow = Feet (ankle, heel, toe)
+- Magenta = Wrists
+- Green = Body
 
 **Controls:**
 - `q` or `ESC` - Quit
 - `s` - Toggle smoothing
 - `+/-` - Adjust smoothing alpha (0.0-0.9)
 
-**Note:** The model file `yolov8n-pose.pt` downloads automatically on first run (~6.5MB).
+**Models:**
+| Model | Size | FPS | Use case |
+|-------|------|-----|----------|
+| lite | ~3MB | ~25 | Low latency, more jitter |
+| full | ~9MB | ~30 | Balanced (default) |
+| heavy | ~26MB | ~17 | More stable, slower |
+
+**Note:** Models download automatically on first run to `oak/models/`.
 
 ## depthai v3 API Notes
 

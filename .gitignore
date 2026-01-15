@@ -50,6 +50,7 @@ capture/calibration_images/
 *.onnx
 *.task
 .depthai_cached_models/
+oak/models/
 sanity/models/
 
 # Logs
