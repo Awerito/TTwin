@@ -5,10 +5,10 @@ OAK-D Pro W PoE - Connection Test
 Tests connection to the OAK-D camera and prints device info.
 
 Setup (if camera has static IP in different subnet):
-    sudo ip addr add 192.168.18.1/24 dev enp9s0
+    sudo ip addr add <CAMERA_SUBNET>.1/24 dev <INTERFACE>
 
 Usage:
-    python oak/connect.py [--ip 192.168.18.103]
+    python oak/connect.py [--ip <CAMERA_IP>]
 """
 
 import argparse
@@ -61,9 +61,9 @@ def main():
         print()
         print("Troubleshooting:")
         print("  1. Check camera LED is on (power from PoE switch)")
-        print("  2. Ping the camera: ping 192.168.18.103")
-        print("  3. If ping fails, add IP route:")
-        print("     sudo ip addr add 192.168.18.1/24 dev enp9s0")
+        print(f"  2. Ping the camera: ping {ip}")
+        print("  3. If ping fails, add secondary IP in camera's subnet:")
+        print("     sudo ip addr add <CAMERA_SUBNET>.1/24 dev <INTERFACE>")
         return 1
 
     return 0

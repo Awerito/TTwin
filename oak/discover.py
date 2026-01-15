@@ -154,7 +154,7 @@ def interactive_setup():
     print("To find your camera's IP:")
     print("  1. Check your router's admin page (DHCP leases / LAN devices)")
     print("  2. Look for a device with MAC starting with common OAK prefixes")
-    print("  3. Or try common static IPs: 192.168.18.103, 169.254.1.222")
+    print("  3. Or try factory fallback IP: 169.254.1.222")
     print()
 
     camera_ip = input(f"Enter camera IP (or press Enter to try {CAMERA_IP}): ").strip()
@@ -237,7 +237,7 @@ def main():
         devices = scan_network_for_devices()
         if not devices:
             print("Tip: If camera is on different subnet, run with --setup")
-            print("     or specify IP directly with --ip 192.168.x.x")
+            print("     or specify IP directly with --ip <CAMERA_IP>")
 
 
 if __name__ == "__main__":

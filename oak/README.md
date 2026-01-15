@@ -19,7 +19,7 @@ The camera may be pre-configured with a static IP in a different subnet than you
 
 ```
 Camera IP: <CAMERA_IP>       # Find this (see below)
-PC IP:     <YOUR_PC_IP>      # Your network (e.g., 192.168.1.x)
+PC IP:     <YOUR_PC_IP>      # Your network
 ```
 
 ### Physical Connection
@@ -44,7 +44,7 @@ OAK PoE cameras by default use **DHCP** (get IP from router). If DHCP fails, the
 If someone configured a static IP (like in this case), you need to find it:
 
 **Method 1: Check Router Admin Page**
-1. Open your router's admin page (usually http://192.168.1.1)
+1. Open your router's admin page (check router label for URL)
 2. Look for "LAN Devices", "DHCP Leases", or "Connected Devices"
 3. Find the device by MAC address (OAK devices often show no hostname)
 4. Note the IP address
@@ -52,7 +52,7 @@ If someone configured a static IP (like in this case), you need to find it:
 **Method 2: Network Scan (if on same subnet)**
 ```bash
 # Scan local network
-nmap -sn 192.168.1.0/24
+nmap -sn <YOUR_SUBNET>.0/24
 
 # Or use depthai discovery
 python -c "import depthai as dai; print(dai.Device.getAllAvailableDevices())"
@@ -73,7 +73,7 @@ If the camera is on a different subnet than your PC, add a secondary IP:
 ip link show  # Look for enp*, eth*, etc.
 
 # Add secondary IP in camera's subnet
-# Example: if camera is 192.168.18.103, use 192.168.18.1
+# Example: if camera is X.X.X.103, use X.X.X.1
 sudo ip addr add <CAMERA_SUBNET>.1/24 dev <YOUR_INTERFACE>
 
 # Verify
@@ -104,13 +104,19 @@ python oak/streams.py
 
 ## Configuration
 
-Edit `oak/config.py` to set your camera's IP:
+Copy the example and edit with your camera's IP:
 
-```python
-CAMERA_IP = "<YOUR_CAMERA_IP>"  # Change to your camera's IP
+```bash
+cp sample.env .env
+nano .env
 ```
 
-All scripts read from this config. You can also override with `--ip`:
+```bash
+# .env (project root)
+CAMERA_IP=<YOUR_CAMERA_IP>
+```
+
+All scripts read from this `.env` file. You can also override with `--ip`:
 ```bash
 python oak/streams.py --ip <CAMERA_IP>
 ```
@@ -154,22 +160,27 @@ Output:
   Calibration: Available (factory calibrated)
 ```
 
-### streams.py - RGB + Depth Viewer
+### pose.py - Body Tracking with YOLOv8
 
-Live viewer for RGB and depth streams:
+Real-time pose estimation using YOLOv8 + ByteTrack on CPU:
 
 ```bash
-python oak/streams.py [--ip <CAMERA_IP>]
+python oak/pose.py
 ```
+
+**Performance:** ~32 FPS, ~30ms inference on Ryzen 7 5700X
+
+**Features:**
+- 17 COCO keypoints per person
+- Persistent tracking IDs (survives occlusions)
+- EMA smoothing to reduce jitter
 
 **Controls:**
 - `q` or `ESC` - Quit
+- `s` - Toggle smoothing
+- `+/-` - Adjust smoothing alpha (0.0-0.9)
 
-**Depth colormap:**
-- Black = no data (too close/far)
-- Blue = close (~20cm)
-- Green/Yellow = medium distance
-- Red = far
+**Note:** The model file `yolov8n-pose.pt` downloads automatically on first run (~6.5MB).
 
 ## depthai v3 API Notes
 
