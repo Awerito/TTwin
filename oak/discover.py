@@ -195,7 +195,7 @@ def interactive_setup():
         print("=" * 60)
         print()
         print("To use the camera:")
-        print(f"  python oak/streams.py --ip {camera_ip}")
+        print(f"  python oak/pose.py")
         print()
         print("Note: The secondary IP is temporary. After reboot, run:")
         print(f"  sudo ip addr add {camera_subnet}.1/24 dev {interface}")

@@ -98,8 +98,8 @@ nano oak/config.py
 # 3. Add secondary IP if camera is on different subnet
 sudo ip addr add <CAMERA_SUBNET>.1/24 dev <YOUR_INTERFACE>
 
-# 4. View streams
-python oak/streams.py
+# 4. Run body tracking
+python oak/pose.py
 ```
 
 ## Configuration
@@ -116,10 +116,7 @@ nano .env
 CAMERA_IP=<YOUR_CAMERA_IP>
 ```
 
-All scripts read from this `.env` file. You can also override with `--ip`:
-```bash
-python oak/streams.py --ip <CAMERA_IP>
-```
+All scripts read from this `.env` file.
 
 ## Scripts
 
