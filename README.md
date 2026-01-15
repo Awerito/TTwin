@@ -22,19 +22,20 @@ replica of real-world table tennis physics.
 
 ```
 ┌─────────────────────────┐         ┌─────────────────────────┐
-│   StereoVideoCamera     │   USB   │        TTwin            │
-│   (Android App)         │ ──────► │   (Physics Simulator)   │
-│                         │  WiFi   │                         │
-│ • Dual camera capture   │         │ • Stereo calibration    │
-│ • 1080p @ 60fps         │         │ • 3D body tracking      │
-│ • TCP streaming         │         │ • Physics simulation    │
+│   Depth Camera          │   PoE   │        TTwin            │
+│   (OAK-D Pro W PoE)     │ ──────► │   (Physics Simulator)   │
+│                         │         │                         │
+│ • Stereo depth          │         │ • 3D body tracking      │
+│ • RGB 12MP @ 30fps      │         │ • Physics simulation    │
+│ • Factory calibrated    │         │ • Real-time rendering   │
 └─────────────────────────┘         └─────────────────────────┘
-       Xiaomi 14T                          PC (Linux)
+        Luxonis                            PC (Linux)
 ```
 
-📱 **Companion App:**
-[StereoVideoCamera](https://github.com/Awerito/StereoVideoCamera) - Android app
-for stereo video capture
+📷 **Primary Camera:** OAK-D Pro W PoE (see [oak/README.md](oak/README.md))
+
+📱 **Alternative:** [StereoVideoCamera](https://github.com/Awerito/StereoVideoCamera)
+Android app for dual-camera capture (requires manual calibration)
 
 ## Quick Start
 
@@ -93,7 +94,29 @@ Classic side view for analyzing trajectories.
 | `↑/↓` | Adjust launch angle |
 | `←/→` | Adjust launch speed |
 
-## Stereo Camera Capture
+## OAK-D Camera (Recommended)
+
+The `oak/` module handles the OAK-D Pro W PoE stereo depth camera.
+
+### Setup
+
+```bash
+# 1. Connect camera to PoE switch
+# 2. Find camera IP (check router or use discover script)
+# 3. Edit oak/config.py with your camera's IP
+# 4. If camera is on different subnet, add secondary IP:
+sudo ip addr add <CAMERA_SUBNET>.1/24 dev <YOUR_INTERFACE>
+
+# 5. Test connection
+python oak/connect.py
+
+# 6. View RGB + Depth streams
+python oak/streams.py
+```
+
+See [oak/README.md](oak/README.md) for detailed setup and troubleshooting.
+
+## Phone Stereo Capture (Alternative)
 
 The `capture/` module handles stereo video from a dual-camera phone for 3D tracking.
 
@@ -188,7 +211,13 @@ TTwin/
 │   ├── view_3d.py          # 3D Ursina viewer
 │   ├── side_view.py        # 2D pygame side view
 │   └── dual_view.py        # 2D pygame dual view
-├── capture/
+├── oak/                     # OAK-D Pro W PoE camera
+│   ├── config.py           # Camera IP configuration
+│   ├── connect.py          # Connection test
+│   ├── streams.py          # RGB + Depth viewer
+│   ├── discover.py         # Network discovery wizard
+│   └── README.md           # Setup documentation
+├── capture/                 # Phone stereo capture (alternative)
 │   ├── stereo_receiver.py  # View stereo feed from phone
 │   └── stereo_calibrate.py # Camera calibration
 ├── sanity/                  # Test scripts
@@ -249,9 +278,9 @@ python viewers/side_view.py
 - [x] 2D viewers (side, dual)
 - [x] 3D viewer
 - [x] Spin physics (Magnus effect)
-- [x] Stereo camera capture
-- [ ] Stereo calibration complete
-- [ ] 3D body tracking
+- [x] Phone stereo camera capture
+- [x] OAK-D Pro W PoE integration
+- [ ] 3D body/ball tracking
 - [ ] Paddle collision physics
 - [ ] Continuous rally
 - [ ] Player control
