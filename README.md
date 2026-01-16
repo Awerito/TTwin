@@ -94,9 +94,9 @@ Classic side view for analyzing trajectories.
 | `↑/↓` | Adjust launch angle |
 | `←/→` | Adjust launch speed |
 
-## OAK-D Camera (Recommended)
+## OAK-D Camera - BlazePose On-Device
 
-The `oak/` module handles the OAK-D Pro W PoE stereo depth camera.
+Real-time 3D pose tracking using [BlazePose](https://github.com/geaxgx/depthai_blazepose) running **on the Myriad X VPU** (not on CPU).
 
 ### Setup
 
@@ -110,44 +110,39 @@ sudo ip addr add <CAMERA_SUBNET>.1/24 dev <YOUR_INTERFACE>
 # 5. Test connection
 python oak/connect.py
 
-# 6. Live preview (RGB + Depth + Pose)
-python oak/pose_3d.py
+# 6. Run pose tracking
+python oak/blazepose_live.py
 ```
 
-See [oak/README.md](oak/README.md) for detailed setup and troubleshooting.
+### Performance
 
-### 3D Pose Capture Workflow
+| Model | FPS | FPS with 3D |
+|-------|-----|-------------|
+| Lite  | 26  | 22          |
+| Full  | 20  | 18          |
+| Heavy | 8   | 7           |
 
-Record and process 3D body poses from the OAK-D camera:
+### How it works
 
-```bash
-# 1. Live preview (verify camera works)
-python oak/pose_3d.py
-
-# 2. Record session (press 'r' to start/stop)
-python oak/capture_raw.py
-
-# 3. Process recording (extracts 3D landmarks)
-python oak/process_recording.py recordings/<timestamp>
-
-# 4. Playback results
-python oak/playback_3d.py recordings/<timestamp>
+```
+┌─────────────────────────────────────────────────────┐
+│                   OAK-D Pro W PoE                   │
+│                                                     │
+│  RGB Camera ──► BlazePose ──► Landmarks (33 pts)   │
+│                 (on VPU)                            │
+│  Stereo Cams ──► Depth ──────► 3D reference point  │
+│                                                     │
+└──────────────────────┬──────────────────────────────┘
+                       │ ~3KB/frame (just keypoints)
+                       ▼
+                      PC (visualization only)
 ```
 
-**Recording output:**
-```
-recordings/<timestamp>/
-├── rgb/              # 1280×800 JPEG frames
-├── depth/            # 16-bit PNG depth maps (mm)
-├── timestamps.csv    # Frame timestamps
-├── intrinsics.json   # Camera calibration
-├── metadata.json     # Session info
-└── poses_3d.json     # 33 landmarks per frame (meters)
-```
+All inference runs on-device. PC only receives landmarks, not raw frames.
 
-**Performance:**
-- Capture: ~15 fps (RGB + aligned depth)
-- Processing: ~24 fps (MediaPipe on CPU)
+### Credits
+
+Based on [depthai_blazepose](https://github.com/geaxgx/depthai_blazepose) by geaxgx.
 
 ## Phone Stereo Capture (Alternative)
 
@@ -244,14 +239,12 @@ TTwin/
 │   ├── view_3d.py          # 3D Ursina viewer
 │   ├── side_view.py        # 2D pygame side view
 │   └── dual_view.py        # 2D pygame dual view
-├── oak/                     # OAK-D Pro W PoE camera
+├── oak/                     # OAK-D Pro W PoE + BlazePose on-device
+│   ├── blazepose_live.py   # Main entry point
+│   ├── BlazeposeDepthaiEdge.py # On-device tracker
 │   ├── config.py           # Camera IP configuration
 │   ├── connect.py          # Connection test
-│   ├── discover.py         # Network discovery wizard
-│   ├── pose_3d.py          # Live pose preview
-│   ├── capture_raw.py      # Record RGB+Depth
-│   ├── process_recording.py # Extract 3D poses
-│   ├── playback_3d.py      # Visualize results
+│   ├── models/             # Neural network blobs for VPU
 │   └── README.md           # Setup documentation
 ├── capture/                 # Phone stereo capture (alternative)
 │   ├── stereo_receiver.py  # View stereo feed from phone
@@ -316,7 +309,7 @@ python oak/connect.py
 - [x] Spin physics (Magnus effect)
 - [x] Phone stereo camera capture
 - [x] OAK-D Pro W PoE integration
-- [x] 3D body tracking (pose capture + processing)
+- [x] 3D body tracking (BlazePose on-device, ~18fps)
 - [ ] 3D ball tracking
 - [ ] Paddle collision physics
 - [ ] Continuous rally
