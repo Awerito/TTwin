@@ -36,6 +36,7 @@ Thumbs.db
 
 # Temporary/exploratory scripts
 sanity/
+recordings/
 
 # Calibration images (large, local only)
 capture/calibration_images/

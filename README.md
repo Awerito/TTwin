@@ -110,11 +110,44 @@ sudo ip addr add <CAMERA_SUBNET>.1/24 dev <YOUR_INTERFACE>
 # 5. Test connection
 python oak/connect.py
 
-# 6. View RGB + Depth streams
-python oak/streams.py
+# 6. Live preview (RGB + Depth + Pose)
+python oak/pose_3d.py
 ```
 
 See [oak/README.md](oak/README.md) for detailed setup and troubleshooting.
+
+### 3D Pose Capture Workflow
+
+Record and process 3D body poses from the OAK-D camera:
+
+```bash
+# 1. Live preview (verify camera works)
+python oak/pose_3d.py
+
+# 2. Record session (press 'r' to start/stop)
+python oak/capture_raw.py
+
+# 3. Process recording (extracts 3D landmarks)
+python oak/process_recording.py recordings/<timestamp>
+
+# 4. Playback results
+python oak/playback_3d.py recordings/<timestamp>
+```
+
+**Recording output:**
+```
+recordings/<timestamp>/
+├── rgb/              # 1280×800 JPEG frames
+├── depth/            # 16-bit PNG depth maps (mm)
+├── timestamps.csv    # Frame timestamps
+├── intrinsics.json   # Camera calibration
+├── metadata.json     # Session info
+└── poses_3d.json     # 33 landmarks per frame (meters)
+```
+
+**Performance:**
+- Capture: ~15 fps (RGB + aligned depth)
+- Processing: ~24 fps (MediaPipe on CPU)
 
 ## Phone Stereo Capture (Alternative)
 
@@ -214,13 +247,16 @@ TTwin/
 ├── oak/                     # OAK-D Pro W PoE camera
 │   ├── config.py           # Camera IP configuration
 │   ├── connect.py          # Connection test
-│   ├── streams.py          # RGB + Depth viewer
 │   ├── discover.py         # Network discovery wizard
+│   ├── pose_3d.py          # Live pose preview
+│   ├── capture_raw.py      # Record RGB+Depth
+│   ├── process_recording.py # Extract 3D poses
+│   ├── playback_3d.py      # Visualize results
 │   └── README.md           # Setup documentation
 ├── capture/                 # Phone stereo capture (alternative)
 │   ├── stereo_receiver.py  # View stereo feed from phone
 │   └── stereo_calibrate.py # Camera calibration
-├── sanity/                  # Test scripts
+├── recordings/              # Captured sessions (gitignored)
 ├── requirements.txt
 ├── CLAUDE.md               # Development notes
 └── README.md
@@ -259,11 +295,11 @@ maturin develop -r     # Release build (faster)
 ### Running Tests
 
 ```bash
-# Test Ursina works
-python sanity/test_ursina.py
-
 # Test physics
 python viewers/side_view.py
+
+# Test OAK-D camera
+python oak/connect.py
 ```
 
 ## Known Issues
@@ -280,7 +316,8 @@ python viewers/side_view.py
 - [x] Spin physics (Magnus effect)
 - [x] Phone stereo camera capture
 - [x] OAK-D Pro W PoE integration
-- [ ] 3D body/ball tracking
+- [x] 3D body tracking (pose capture + processing)
+- [ ] 3D ball tracking
 - [ ] Paddle collision physics
 - [ ] Continuous rally
 - [ ] Player control
