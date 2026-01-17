@@ -9,6 +9,7 @@ import marshal
 import sys
 from string import Template
 from math import sin, cos
+from config import CAMERA_IP
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 POSE_DETECTION_MODEL = str(SCRIPT_DIR / "models/pose_detection_sh4.blob")
@@ -101,8 +102,8 @@ class BlazeposeDepthai:
         self.trace = trace
         self.force_detection = force_detection
 
-        # PoE camera IP - change this to your camera's IP
-        device_info = dai.DeviceInfo("192.168.18.103")
+        # PoE camera IP from .env via config.py
+        device_info = dai.DeviceInfo(CAMERA_IP)
         self.device = dai.Device(device_info)
         self.xyz = False
         
@@ -379,7 +380,7 @@ class BlazeposeDepthai:
         import re
         code = re.sub(r'"{3}.*?"{3}', '', code, flags=re.DOTALL)
         code = re.sub(r'#.*', '', code)
-        code = re.sub('\n\s*\n', '\n', code)
+        code = re.sub(r'\n\s*\n', '\n', code)
         # For debugging
         if self.trace:
             with open("tmp_code.py", "w") as file:
